@@ -1,0 +1,40 @@
+{
+  "name": "Outline: List Documents",
+  "nodes": [
+    {
+      "parameters": {
+        "url": "https://{{$env[\"DOCS_DOMAIN\"]}}/api/documents.list",
+        "options": {},
+        "authentication": "none",
+        "queryParametersUi": {
+          "parameter": []
+        },
+        "allowUnauthorizedCerts": false,
+        "sendHeaders": true,
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$env[\"OUTLINE_API_TOKEN\"]}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options.binaryPropertyName": "",
+        "options.followRedirect": true
+      },
+      "id": "httpRequest",
+      "name": "HTTP Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        540,
+        300
+      ]
+    }
+  ],
+  "connections": {}
+}

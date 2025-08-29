@@ -1,0 +1,187 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: kb_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_SUPERUSER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERPASS:?set in .env}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d
+    networks:
+      - internal
+
+  redis:
+    image: redis:7-alpine
+    container_name: kb_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "no"]
+    networks:
+      - internal
+
+  outline:
+    image: outlinewiki/outline:latest
+    container_name: kb_outline
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      URL: ${PUBLIC_URL_SCHEME}://${DOCS_DOMAIN}
+      PORT: 3000
+      FORCE_HTTPS: "true"
+
+      DATABASE_URL: postgres://outline:${OUTLINE_DB_PASSWORD}@postgres:5432/outline
+      REDIS_URL: redis://redis:6379
+
+      FILE_STORAGE: s3
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_REGION: ${AWS_REGION}
+      AWS_S3_UPLOAD_BUCKET_URL: ${AWS_S3_UPLOAD_BUCKET_URL}
+      AWS_S3_UPLOAD_BUCKET_NAME: ${AWS_S3_UPLOAD_BUCKET_NAME}
+      AWS_S3_FORCE_PATH_STYLE: ${AWS_S3_FORCE_PATH_STYLE}
+
+      SECRET_KEY: ${OUTLINE_SECRET_KEY}
+      UTILS_SECRET: ${OUTLINE_UTILS_SECRET}
+
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
+      OIDC_AUTH_URI: ${PUBLIC_URL_SCHEME}://${AUTH_DOMAIN}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/auth
+      OIDC_TOKEN_URI: ${PUBLIC_URL_SCHEME}://${AUTH_DOMAIN}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token
+      OIDC_USERINFO_URI: ${PUBLIC_URL_SCHEME}://${AUTH_DOMAIN}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/userinfo
+      OIDC_USERNAME_CLAIM: preferred_username
+      OIDC_DISPLAY_NAME: Keycloak
+      OIDC_SCOPES: openid profile email
+
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USERNAME: ${SMTP_USERNAME}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL}
+    depends_on:
+      - postgres
+      - redis
+      - keycloak
+    networks:
+      - internal
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.5
+    container_name: kb_keycloak
+    restart: unless-stopped
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KC_DB: postgres
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_PROXY: edge
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME: ${AUTH_DOMAIN}
+      KC_HOSTNAME_STRICT: "false"
+    command:
+      - start
+      - --import-realm
+      - --http-port=8080
+    volumes:
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    depends_on:
+      - postgres
+    networks:
+      - internal
+
+  n8n:
+    image: n8nio/n8n:1.64.0
+    container_name: kb_n8n
+    restart: unless-stopped
+    environment:
+      N8N_HOST: ${FLOW_DOMAIN}
+      N8N_PORT: 5678
+      N8N_PROTOCOL: https
+      WEBHOOK_URL: https://${FLOW_DOMAIN}/
+      DOCS_DOMAIN: ${DOCS_DOMAIN}
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: n8n
+      DB_POSTGRESDB_USER: n8n
+      DB_POSTGRESDB_PASSWORD: ${N8N_DB_PASSWORD}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      N8N_BASIC_AUTH_ACTIVE: ${N8N_BASIC_AUTH_ACTIVE:-true}
+      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-admin}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD:-change_me}
+      N8N_IMPORT_EXPORT_DIR: /data/import
+      N8N_IMPORT_FILE: /data/import/outline-test.json
+      OUTLINE_API_TOKEN: ${OUTLINE_API_TOKEN}
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/workflows:/data/import:ro
+    depends_on:
+      - postgres
+    networks:
+      - internal
+
+  minio:
+    image: minio/minio:RELEASE.2024-08-03T04-33-23Z
+    container_name: kb_minio
+    command: server --console-address ":9001" /data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+      - minio_data:/data
+    expose:
+      - "9000"
+      - "9001"
+    networks:
+      - internal
+    restart: unless-stopped
+
+  nginx:
+    build: ./nginx
+    container_name: kb_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - certbot_etc:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    depends_on:
+      - outline
+      - keycloak
+      - n8n
+    networks:
+      - internal
+    environment:
+      DOCS_DOMAIN: ${DOCS_DOMAIN}
+      AUTH_DOMAIN: ${AUTH_DOMAIN}
+      FLOW_DOMAIN: ${FLOW_DOMAIN}
+      ENABLE_TLS: ${ENABLE_TLS:-true}
+
+  certbot:
+    image: certbot/certbot:v2.11.0
+    container_name: kb_certbot
+    restart: unless-stopped
+    volumes:
+      - certbot_etc:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    entrypoint: /bin/sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done;"
+    networks:
+      - internal
+
+
+volumes:
+  pg_data:
+  n8n_data:
+  minio_data:
+  certbot_etc:
+  certbot_www:
+
+networks:
+  internal:
+    driver: bridge

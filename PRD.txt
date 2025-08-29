@@ -1,0 +1,103 @@
+PRD: Self-Hosted Knowledge Base & Automation Stack
+Goal
+Deploy a self-hosted Outline knowledge base with proper authentication, persistent storage, and integration points for later AI features. Deploy a companion n8n automation service that can interact with Outline and other systems.
+Initial scope:
+	•	Store technical documentation and HR/policy docs.
+	•	Central authentication via WeCom → Keycloak (OIDC).
+	•	Persistent database + file storage.
+	•	No AI features yet, but infra must be “AI-ready.”
+
+Components
+1. Outline
+	•	Purpose: Markdown-based knowledge base with versioning, roles, and API.
+	•	Deployment: Docker container.
+	•	Dependencies:
+	◦	Postgres (structured data + revisions).
+	◦	Redis (caching).
+	◦	Object storage (S3-compatible) for file uploads (Tencent COS or local MinIO).
+	◦	OIDC provider (Keycloak) for authentication.
+	•	Networking:
+	◦	Accessible at https://docs.school.edu behind reverse proxy (Nginx or Caddy).
+	•	Persistence:
+	◦	Volumes for Postgres data, Redis (optional ephemeral), Outline local config.
+	◦	Bucket for file uploads.
+	•	Environment (core vars):
+	◦	DATABASE_URL → Postgres
+	◦	REDIS_URL → Redis
+	◦	FILE_STORAGE=s3
+	◦	AWS_* (COS or MinIO credentials, region, bucket)
+	◦	OIDC_* (issuer, client id/secret, URIs from Keycloak)
+	◦	SECRET_KEY and UTILS_SECRET (random hex)
+
+2. Keycloak
+	•	Purpose: Identity provider bridging WeCom OAuth2 → OIDC.
+	•	Deployment: Docker container.
+	•	Configuration:
+	◦	Realm: school
+	◦	Identity provider: WeCom (client id/secret, endpoints).
+	◦	OIDC client: outline with allowed callback https://docs.school.edu/auth/oidc.callback.
+	◦	User groups: Staff, staff-tech, staff-hr, admin
+	•	Forward compatibility:
+	◦	Groups must map cleanly to Outline collections (tech docs vs HR).
+	◦	JWT claims should include groups.
+
+3. Postgres
+	•	Purpose: Persistent DB for Outline.
+	•	Option A: Local container with persistent volume.
+	•	Option B: Managed Postgres (Supabase).
+	•	Schema ownership: Outline only.
+
+4. Redis
+	•	Purpose: Cache and job queue.
+	•	Deployment: Docker container.
+	•	Persistence: Not required; can be ephemeral.
+
+5. Object Storage
+	•	Purpose: Store file uploads (images, PDFs, assets).
+	•	Option A: Tencent COS bucket (recommended for prod).
+	•	Option B: Local MinIO container (for dev/test or intranet).
+	•	Interface: Must expose S3 API.
+
+6. Reverse Proxy
+	•	Purpose: TLS termination, routing.
+	•	Deployment: Nginx or Caddy in Docker.
+	•	TLS: Let’s Encrypt certs via HTTP-01 challenge.
+	•	Domains:
+	◦	docs.school.edu → Outline
+	◦	auth.school.edu → Keycloak
+	◦	flow.school.edu → n8n
+
+7. n8n
+	•	Purpose: Workflow automation service (ETL, integrations).
+	•	Deployment: Docker container.
+	•	Networking: Exposed at https://flow.school.edu.
+	•	Persistence: Local volume for configs and DB.
+	•	Integration requirements:
+	◦	Must talk to Outline via API token.
+	◦	Must be able to connect to Postgres (read-only later, for AI sidecar).
+	◦	Future integrations: WeCom, GitHub/GitLab, email, vector DB.
+
+Future-proofing for AI/RAG
+	•	API Access: Outline must be reachable via API for ingestion.
+	•	Doc metadata: updatedAt field is critical for incremental sync.
+	•	Storage structure: All uploads must land in an S3 bucket (COS/MinIO), not in ephemeral local storage.
+	•	n8n connectivity: Must expose HTTP trigger nodes for a sidecar RAG indexer later.
+	•	Auth propagation: Keycloak must issue JWT with group claims for downstream enforcement in sidecar.
+	•	Optional (not implemented yet):
+	◦	Deploy pgvector plugin or separate vector DB (Qdrant/Milvus) alongside Postgres.
+	◦	Expose flow.school.edu/ask endpoint as a stub to integrate later RAG service.
+
+Deliverables
+	•	Docker Compose stack with services:
+	◦	outline, postgres, redis, keycloak, n8n, nginx, minio (if local S3).
+	•	Persistent volumes:
+	◦	/data/postgres, /data/n8n, /data/minio
+	•	Reverse proxy config with TLS.
+	•	Keycloak realm config (OIDC client + WeCom IdP).
+	•	Outline env file with correct secrets.
+	•	n8n initial setup: admin user + test workflow that queries Outline API.
+
+Non-Goals (for this PRD)
+	•	No AI sidecar (indexing, embeddings, retrieval).
+	•	No course/academic content collections (yet).
+	•	No advanced monitoring (basic container logs are enough).
