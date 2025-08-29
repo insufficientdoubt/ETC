@@ -19,7 +19,7 @@ services:
     profiles: ["prod"]
 
   minio-setup:
-    image: minio/mc:RELEASE.2024-08-17T03-51-57Z
+    image: minio/mc:latest
     depends_on:
       - minio
     environment:

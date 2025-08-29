@@ -8,6 +8,9 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_SUPERUSER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_SUPERPASS:?set in .env}
+      OUTLINE_DB_PASSWORD: ${OUTLINE_DB_PASSWORD}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      N8N_DB_PASSWORD: ${N8N_DB_PASSWORD}
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ./db/init:/docker-entrypoint-initdb.d
@@ -31,9 +34,10 @@ services:
     environment:
       URL: ${PUBLIC_URL_SCHEME}://${DOCS_DOMAIN}
       PORT: 3000
-      FORCE_HTTPS: "true"
+      FORCE_HTTPS: "false"
 
       DATABASE_URL: postgres://outline:${OUTLINE_DB_PASSWORD}@postgres:5432/outline
+      PGSSLMODE: disable
       REDIS_URL: redis://redis:6379
 
       FILE_STORAGE: s3
@@ -49,9 +53,9 @@ services:
 
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
-      OIDC_AUTH_URI: ${PUBLIC_URL_SCHEME}://${AUTH_DOMAIN}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/auth
-      OIDC_TOKEN_URI: ${PUBLIC_URL_SCHEME}://${AUTH_DOMAIN}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token
-      OIDC_USERINFO_URI: ${PUBLIC_URL_SCHEME}://${AUTH_DOMAIN}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/userinfo
+      OIDC_AUTH_URI: http://kb_keycloak:8080/realms/${KEYCLOAK_REALM}/protocol/openid-connect/auth
+      OIDC_TOKEN_URI: http://kb_keycloak:8080/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token
+      OIDC_USERINFO_URI: http://kb_keycloak:8080/realms/${KEYCLOAK_REALM}/protocol/openid-connect/userinfo
       OIDC_USERNAME_CLAIM: preferred_username
       OIDC_DISPLAY_NAME: Keycloak
       OIDC_SCOPES: openid profile email
@@ -81,12 +85,17 @@ services:
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_PROXY: edge
       KC_HTTP_ENABLED: "true"
-      KC_HOSTNAME: ${AUTH_DOMAIN}
       KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_HTTP_RELATIVE_PATH: /
+      KC_HOSTNAME_URL: ${PUBLIC_URL_SCHEME}://${AUTH_DOMAIN}
+      KC_HOSTNAME_ADMIN_URL: ${PUBLIC_URL_SCHEME}://${AUTH_DOMAIN}
     command:
-      - start
+      - start-dev
       - --import-realm
       - --http-port=8080
+      - --spi-login-protocol-openid-connect-legacy-logout-redirect-uri=true
+      - --http-enabled=true
     volumes:
       - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
     depends_on:
@@ -101,8 +110,9 @@ services:
     environment:
       N8N_HOST: ${FLOW_DOMAIN}
       N8N_PORT: 5678
-      N8N_PROTOCOL: https
-      WEBHOOK_URL: https://${FLOW_DOMAIN}/
+      N8N_PROTOCOL: http
+      WEBHOOK_URL: http://${FLOW_DOMAIN}/
+      N8N_SECURE_COOKIE: "false"
       DOCS_DOMAIN: ${DOCS_DOMAIN}
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: postgres

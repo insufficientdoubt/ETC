@@ -3,6 +3,7 @@
   "enabled": true,
   "registrationAllowed": false,
   "loginTheme": "keycloak",
+  "sslRequired": "none",
   "clients": [
     {
       "clientId": "outline",
@@ -11,18 +12,18 @@
       "publicClient": false,
       "protocol": "openid-connect",
       "redirectUris": [
-        "https://docs.school.edu/auth/oidc.callback"
+        "https://docs.school.edu/auth/oidc.callback",
+        "http://docs.localhost/auth/oidc.callback"
       ],
       "webOrigins": [
-        "https://docs.school.edu"
+        "https://docs.school.edu",
+        "http://docs.localhost"
       ],
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
-      "attributes": {
-        "pkce.code.challenge.method": "S256"
-      },
+      "attributes": {},
       "secret": "CHANGE_ME_OIDC_CLIENT_SECRET"
     }
   ],
@@ -32,30 +33,7 @@
     { "name": "staff-hr" },
     { "name": "admin" }
   ],
-  "identityProviders": [
-    {
-      "alias": "wecom",
-      "displayName": "WeCom",
-      "providerId": "oidc",
-      "enabled": true,
-      "storeToken": true,
-      "addReadTokenRoleOnCreate": false,
-      "authenticateByDefault": false,
-      "linkOnly": false,
-      "trustEmail": true,
-      "config": {
-        "clientId": "CHANGE_ME_WECOM_CLIENT_ID",
-        "clientSecret": "CHANGE_ME_WECOM_CLIENT_SECRET",
-        "authorizationUrl": "CHANGE_ME_WECOM_AUTH_URL",
-        "tokenUrl": "CHANGE_ME_WECOM_TOKEN_URL",
-        "userInfoUrl": "CHANGE_ME_WECOM_USERINFO_URL",
-        "defaultScope": "openid profile email",
-        "uiLocales": "en",
-        "backchannelSupported": "true",
-        "jwksUrl": "CHANGE_ME_WECOM_JWKS_URL"
-      }
-    }
-  ],
+  "identityProviders": [],
   "protocolMappers": [
     {
       "name": "groups",
